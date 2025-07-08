@@ -14,9 +14,22 @@
 #define VERTEX_MEMORY_SIZE sizeof(GOOFY_VERTICE)
 #define STB_IMAGE_IMPLEMENTATION
 #define INCREASE 2048
+#define MAX_TRASH 64
 #include "stb_image.h"
 
+/*
+sizeof(char) = 1
+sizeof(short) = 2
+sizeof(int) = 4
+sizeof(long) = 4
+sizeof(long long) = 8
+sizeof(float) = 4
+sizeof(double) = 8
+sizeof(long double) = 16
+*/
 GLuint textureArray; // Declare the texture array globally or pass as a parameter
+GOOFY_TRASH_BATCH* goofy_trashRegistry[MAX_TRASH];
+short goofy_trashRegistryCount = 0;
 
 // skibidi Functions
 void APIENTRY glDebugOutput(GLenum source,GLenum type, unsigned int id,GLenum severity,GLsizei length,const char *message,const void *userParam){
@@ -62,12 +75,14 @@ void APIENTRY glDebugOutput(GLenum source,GLenum type, unsigned int id,GLenum se
 void error_callback(int error, const char* description){
     fprintf(stderr, "[GOOFYLIB3] ERROR : %s\n", description);
 }
-void framebuffer_size_callback(GLFWwindow* window, int width, int height){ // resizes the window on resizing the window
+void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
+    glfwMakeContextCurrent(window); // 👈 Ensure the correct context
     glViewport(0, 0, width, height);
 }
 
+
 // MAIN MODULE
-GLFWwindow* goofy_initWindow(const char* windowName, int width, int height, int major_version, int minor_version) {
+GLFWwindow* goofy_initWindow(const char* windowName, short width, short height, char major_version, char minor_version) {
     glfwSetErrorCallback(error_callback);
     printf("[GOOFYLIB3] Initializing window %s\n",windowName); 
     if (!glfwInit()) {
@@ -253,81 +268,19 @@ void goofy_drawAllMeshes(GOOFY_BUFFER* buffer, GLuint shaderProgram) {
 
     glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
 }
-
-void goofy_reallocateMesh(GOOFY_MESH* mesh, size_t newVertexCapacity, size_t newIndexCapacity) {
-    mesh->vertices = realloc(mesh->vertices, sizeof(GOOFY_VERTICE) * newVertexCapacity);
-    mesh->indices = realloc(mesh->indices, sizeof(unsigned int) * newIndexCapacity);
-    mesh->vertexCount += newVertexCapacity;
-    mesh->indexCount += newIndexCapacity;
-    if (!mesh->vertices || !mesh->indices) {
-        fprintf(stderr, "[GOOFYLIB3] Failed to reallocate mesh memory\n");
-        exit(1);
+void goofy_terminate() {
+    for (short i = 0; i < goofy_trashRegistryCount; ++i) {
+        if (goofy_trashRegistry[i]) {
+            goofy_freeTrashBatch(goofy_trashRegistry[i]);
+            goofy_trashRegistry[i] = NULL;
+        }
     }
-}
-void goofy_printMesh(GOOFY_MESH* mesh) {
-    if (!mesh) {
-        printf("[GOOFY_PRINT] Null mesh pointer.\n");
-        return;
-    }
-
-    printf("[GOOFY_PRINT] Mesh has %zu vertices and %zu indices\n", mesh->vertexCount, mesh->indexCount);
-
-    for (size_t i = 0; i < mesh->vertexCount; ++i) {
-        GOOFY_VERTICE v = mesh->vertices[i];
-        printf("  Vertex %zu:\n", i);
-        printf("    Position: (%.6f, %.6f, %.6f)\n", v.position[0], v.position[1], v.position[2]);
-        printf("    Normal:   (%.6f, %.6f, %.6f)\n", v.normals[0], v.normals[1], v.normals[2]);
-        printf("    Texcoord: (%.6f, %.6f)\n", v.texCoords[0], v.texCoords[1]);
-        printf("    TexIndex: (%d)\n", v.texIndex);
-        printf("    is3d: %u\n", v.is3d);
-    }
-
-    printf("  Indices:\n    ");
-    for (size_t i = 0; i < mesh->indexCount; ++i) {
-        printf("%u ", mesh->indices[i]);
-        if ((i + 1) % 12 == 0) printf("\n    ");
-    }
-    printf("\n");
-}
-GOOFY_MESH goofy_appendMesh(const GOOFY_MESH* a,const GOOFY_MESH* b) {
-    GOOFY_MESH result;
-    result.vertexCount = a->vertexCount + b->vertexCount;
-    result.indexCount = a->indexCount + b->indexCount;
-    result.vertices = malloc(sizeof(GOOFY_VERTICE) * result.vertexCount);
-    result.indices = malloc(sizeof(unsigned int) * result.indexCount);
-    if (!result.vertices || !result.indices) {
-        fprintf(stderr, "[GOOFYLIB3] Failed to allocate memory for mesh append.\n");
-        exit(1);
-    }
-    memcpy(result.vertices, a->vertices, sizeof(GOOFY_VERTICE) * a->vertexCount);
-    memcpy(result.vertices + a->vertexCount, b->vertices, sizeof(GOOFY_VERTICE) * b->vertexCount);
-    memcpy(result.indices, a->indices, sizeof(unsigned int) * a->indexCount);
-    for (size_t i = 0; i < b->indexCount; ++i) {
-        result.indices[a->indexCount + i] = b->indices[i] + a->vertexCount;
-    }
-    return result;
-}
-void goofy_freeMesh(GOOFY_MESH* mesh) {
-    if (!mesh) return;
-    if (mesh->vertices) {
-        free(mesh->vertices);
-        mesh->vertices = NULL;
-    }
-    if (mesh->indices) {
-        free(mesh->indices);
-        mesh->indices = NULL;
-    }
-    mesh->vertexCount = 0;
-    mesh->indexCount = 0;
-}
-void goofy_transformMesh(GOOFY_MESH* mesh, float x, float y, float z) {
-    for (int i = 0; i < mesh->vertexCount; i++) {
-        mesh->vertices[i].position[0] += x;
-        mesh->vertices[i].position[1] += y;
-        mesh->vertices[i].position[2] += z;
-    }
+    goofy_trashRegistryCount = 0;
+    glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+    glBindVertexArray(0);
 }
 
+// FILE-LOADING functions
 GOOFY_MESH goofy_objMesh(const char* filepath) {
     GOOFY_MESH result = {0}; 
     FILE* file = fopen(filepath, "r");
@@ -485,27 +438,7 @@ GOOFY_MESH goofy_objMesh(const char* filepath) {
     return result;
 }
 
-
-
-
-void goofy_deleteBuffer(GOOFY_BUFFER* buffer) {
-    if (!buffer) return;
-
-    if (buffer->vertexOffsets) free(buffer->vertexOffsets);
-    if (buffer->indexOffsets) free(buffer->indexOffsets);
-    if (buffer->vertexCounts) free(buffer->vertexCounts);
-    if (buffer->indexCounts) free(buffer->indexCounts);
-
-    glDeleteBuffers(1, &buffer->VBO);
-    glDeleteBuffers(1, &buffer->EBO);
-    glDeleteVertexArrays(1, &buffer->VAO);
-
-    buffer->vertexOffsets = NULL;
-    buffer->indexOffsets = NULL;
-    buffer->vertexCounts = NULL;
-    buffer->indexCounts = NULL;
-}
-
+// TEXTURE-RELATED functions
 void goofy_initTextures(int textureWidth, int textureHeight, int numLayers) {
     glGenTextures(1, &textureArray);
     glBindTexture(GL_TEXTURE_2D_ARRAY, textureArray);
@@ -542,7 +475,212 @@ int goofy_loadTexture(const char* path, int layerIndex) { // taken from goofylib
 
     return layerIndex; 
 }
-void goofy_terminate() {
-    glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
-    glBindVertexArray(0);
+
+// MESH-MODIFICATION functions
+void goofy_transformMesh(GOOFY_MESH* mesh, float x, float y, float z) {
+    for (int i = 0; i < mesh->vertexCount; i++) {
+        mesh->vertices[i].position[0] += x;
+        mesh->vertices[i].position[1] += y;
+        mesh->vertices[i].position[2] += z;
+    }
+}
+
+// MEMORY-RELATED functions
+void goofy_reallocateMesh(GOOFY_MESH* mesh, size_t newVertexCapacity, size_t newIndexCapacity) {
+    mesh->vertices = realloc(mesh->vertices, sizeof(GOOFY_VERTICE) * newVertexCapacity);
+    mesh->indices = realloc(mesh->indices, sizeof(unsigned int) * newIndexCapacity);
+    mesh->vertexCount += newVertexCapacity;
+    mesh->indexCount += newIndexCapacity;
+    if (!mesh->vertices || !mesh->indices) {
+        fprintf(stderr, "[GOOFYLIB3] Failed to reallocate mesh memory\n");
+        exit(1);
+    }
+}
+GOOFY_MESH goofy_appendMesh(const GOOFY_MESH* a,const GOOFY_MESH* b) {
+    GOOFY_MESH result;
+    result.vertexCount = a->vertexCount + b->vertexCount;
+    result.indexCount = a->indexCount + b->indexCount;
+    result.vertices = malloc(sizeof(GOOFY_VERTICE) * result.vertexCount);
+    result.indices = malloc(sizeof(unsigned int) * result.indexCount);
+    if (!result.vertices || !result.indices) {
+        fprintf(stderr, "[GOOFYLIB3] Failed to allocate memory for mesh append.\n");
+        exit(1);
+    }
+    memcpy(result.vertices, a->vertices, sizeof(GOOFY_VERTICE) * a->vertexCount);
+    memcpy(result.vertices + a->vertexCount, b->vertices, sizeof(GOOFY_VERTICE) * b->vertexCount);
+    memcpy(result.indices, a->indices, sizeof(unsigned int) * a->indexCount);
+    for (size_t i = 0; i < b->indexCount; ++i) {
+        result.indices[a->indexCount + i] = b->indices[i] + a->vertexCount;
+    }
+    return result;
+}
+void goofy_freeBuffer(GOOFY_BUFFER* buffer) {
+    if (!buffer) return;
+
+    if (buffer->vertexOffsets) free(buffer->vertexOffsets);
+    if (buffer->indexOffsets) free(buffer->indexOffsets);
+    if (buffer->vertexCounts) free(buffer->vertexCounts);
+    if (buffer->indexCounts) free(buffer->indexCounts);
+
+    glDeleteBuffers(1, &buffer->VBO);
+    glDeleteBuffers(1, &buffer->EBO);
+    glDeleteVertexArrays(1, &buffer->VAO);
+
+    buffer->vertexOffsets = NULL;
+    buffer->indexOffsets = NULL;
+    buffer->vertexCounts = NULL;
+    buffer->indexCounts = NULL;
+}
+void goofy_freeMesh(GOOFY_MESH* mesh) {
+    if (!mesh) return;
+    if (mesh->vertices) {
+        free(mesh->vertices);
+        mesh->vertices = NULL;
+    }
+    if (mesh->indices) {
+        free(mesh->indices);
+        mesh->indices = NULL;
+    }
+    mesh->vertexCount = 0;
+    mesh->indexCount = 0;
+}
+void goofy_initTrashBatch(GOOFY_TRASH_BATCH* batch,int maxSize,char autoClean) {
+    batch->maxSize = maxSize;
+    batch->trashCount = 0;
+    batch->items = malloc(sizeof(GOOFY_TRASH_ITEM) * batch->maxSize);
+    if (autoClean == 1) {
+        if (MAX_TRASH>goofy_trashRegistryCount) {
+            goofy_trashRegistry[goofy_trashRegistryCount++] = batch;
+        } else {
+            printf("[GOOFYLIB3] Max trash batches reached (%d). Cannot track more batches.\n", MAX_TRASH);
+            return;
+        }
+    }
+}
+void goofy_addToTrash(GOOFY_TRASH_BATCH* batch, GOOFY_TRASH type, void* item) {
+    if (batch->trashCount >= batch->maxSize) {
+        printf("[GOOFYLIB3] Tried to add trash item to full trash batch with capacity %d. Increasing to %d items \n",batch->maxSize,batch->maxSize+256); 
+        batch->maxSize += 256;
+        batch->items = realloc(batch->items, sizeof(GOOFY_TRASH_ITEM) * batch->maxSize);
+    }
+
+    batch->items[batch->trashCount++] = (GOOFY_TRASH_ITEM){type, item};
+}
+void goofy_clearTrash(GOOFY_TRASH_BATCH* batch) {
+     for (int i = 0; i < batch->trashCount; i++) {
+        GOOFY_TRASH_ITEM* item = &batch->items[i];
+        switch (item->type) {
+            case GOOFY_TRASH_MESH:
+                goofy_freeMesh((GOOFY_MESH*)item->item);
+                break;
+            case GOOFY_TRASH_BUFFER:
+                goofy_freeBuffer((GOOFY_BUFFER*)item->item);
+                break;
+            default:
+                printf("[GOOFYLIB3] Unknown trash item being cleared in trash batch. Type : %d.\n",item->type); 
+                break;
+        }
+    }
+    batch->trashCount = 0;
+}
+void goofy_freeTrashBatch(GOOFY_TRASH_BATCH* batch) {
+    goofy_clearTrash(batch);
+    free(batch->items);
+    batch->items = NULL;
+    batch->maxSize = 0;
+}
+
+// PRIMITIVE-CREATION functions
+GOOFY_MESH goofy_cubeMesh(float x,float y,float z,unsigned int texture,float width,float height,float length,float r,float g,float b,float tX,float tY)  {
+    GOOFY_MESH mesh;
+    GOOFY_VERTICE cubeVertices[] = {
+        // Front face (Z = -size)
+        {{x+width, y+height, z+length}, {r,g,b}, {0,0,1}, {0.0f, tY}, texture,1},
+        {{x-width, y+height, z+length}, {r,g,b}, {0,0,1}, {tX, tY}, texture,1},
+        {{x-width, y-height, z+length}, {r,g,b}, {0,0,1}, {tX, 0.0f}, texture,1},
+        {{x+width, y-height, z+length}, {r,g,b}, {0,0,1}, {0.0f, 0.0f}, texture,1},
+    
+        // Back face (Z = +size)
+        {{x-width, y+height, z-length}, {r,g,b}, {0,0,-1},  {0.0f, tY}, texture,1},
+        {{x+width, y+height, z-length}, {r,g,b}, {0,0,-1},  {tX, tY}, texture,1},
+        {{x+width, y-height, z-length}, {r,g,b}, {0,0,-1},  {tX, 0.0f}, texture,1},
+        {{x-width, y-height, z-length}, {r,g,b}, {0,0,-1},  {0.0f, 0.0f}, texture,1},
+    
+        // Left face (X = -size)
+        {{x+width, y+height, z-length}, {r,g,b}, {1,0,0}, {0.0f, tY}, texture,1},
+        {{x+width, y+height, z+length}, {r,g,b}, {1,0,0}, {tX, tY}, texture,1},
+        {{x+width, y-height, z+length}, {r,g,b}, {1,0,0}, {tX, 0.0f}, texture,1},
+        {{x+width, y-height, z-length}, {r,g,b}, {1,0,0}, {0.0f, 0.0f}, texture,1},
+    
+        // Right face (X = +size)
+        {{x-width, y+height, z+length}, {r,g,b}, {-1,0,0},  {0.0f, tY}, texture,1},
+        {{x-width, y+height, z-length}, {r,g,b}, {-1,0,0},  {tX, tY}, texture,1},
+        {{x-width, y-height, z-length}, {r,g,b}, {-1,0,0},  {tX, 0.0f}, texture,1},
+        {{x-width, y-height, z+length}, {r,g,b}, {-1,0,0},  {0.0f, 0.0f}, texture,1},
+    
+        // Top face (Y = +size)
+        {{x+width, y-height, z+length}, {r,g,b}, {0,-1,0},  {0.0f, tY}, texture,1},
+        {{x-width, y-height, z+length}, {r,g,b}, {0,-1,0},  {tX, tY}, texture,1},
+        {{x-width, y-height, z-length}, {r,g,b}, {0,-1,0},  {tX, 0.0f}, texture,1},
+        {{x+width, y-height, z-length}, {r,g,b}, {0,-1,0},  {0.0f, 0.0f}, texture,1},
+    
+        // Bottom face (Y = -size)
+        {{x+width, y+height, z-length}, {r,g,b}, {0,1,0}, {0.0f, tY}, texture,1},
+        {{x-width, y+height, z-length}, {r,g,b}, {0,1,0}, {tX, tY}, texture,1},
+        {{x-width, y+height, z+length}, {r,g,b}, {0,1,0}, {tX, 0.0f}, texture,1},
+        {{x+width, y+height, z+length}, {r,g,b}, {0,1,0}, {0.0f, 0.0f}, texture,1},
+    };
+    
+    unsigned int cubeIndices[] = {
+        // Front
+        0, 1, 2, 2, 3, 0,
+        // Back
+        4, 5, 6, 6, 7, 4,
+        // Left
+        8, 9,10,10,11, 8,
+        // Right
+       12,13,14,14,15,12,
+        // Top
+       16,17,18,18,19,16,
+        // Bottom
+       20,21,22,22,23,20
+    };
+    mesh.indexCount = 36;
+    mesh.vertexCount = 24;
+    mesh.vertices = (GOOFY_VERTICE*)malloc(sizeof(GOOFY_VERTICE) * mesh.vertexCount);
+    mesh.indices = (unsigned int*)malloc(sizeof(unsigned int) * mesh.indexCount);
+    if (!mesh.vertices || !mesh.indices) {
+        fprintf(stderr, "Failed to allocate mesh data\n");
+        exit(1);
+    }
+    memcpy(mesh.vertices, cubeVertices, sizeof(cubeVertices));
+    memcpy(mesh.indices, cubeIndices, sizeof(cubeIndices));
+    return mesh;
+}
+
+// MISCELLANEOUS functions
+void goofy_printMesh(GOOFY_MESH* mesh) {
+    if (!mesh) {
+        printf("[GOOFY_PRINT] Null mesh pointer.\n");
+        return;
+    }
+
+    printf("[GOOFY_PRINT] Mesh has %zu vertices and %zu indices\n", mesh->vertexCount, mesh->indexCount);
+
+    for (size_t i = 0; i < mesh->vertexCount; ++i) {
+        GOOFY_VERTICE v = mesh->vertices[i];
+        printf("  Vertex %zu:\n", i);
+        printf("    Position: (%.6f, %.6f, %.6f)\n", v.position[0], v.position[1], v.position[2]);
+        printf("    Normal:   (%.6f, %.6f, %.6f)\n", v.normals[0], v.normals[1], v.normals[2]);
+        printf("    Texcoord: (%.6f, %.6f)\n", v.texCoords[0], v.texCoords[1]);
+        printf("    TexIndex: (%d)\n", v.texIndex);
+        printf("    is3d: %u\n", v.is3d);
+    }
+
+    printf("  Indices:\n    ");
+    for (size_t i = 0; i < mesh->indexCount; ++i) {
+        printf("%u ", mesh->indices[i]);
+        if ((i + 1) % 12 == 0) printf("\n    ");
+    }
+    printf("\n");
 }

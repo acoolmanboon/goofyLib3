@@ -4,7 +4,6 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
-
 typedef struct {
     GLuint VAO, VBO, EBO;
     size_t MAX_MESHES;
@@ -35,22 +34,55 @@ typedef struct {
     size_t indexCount;
 } GOOFY_MESH;
 
-// MAIN MODULE 
+typedef enum {
+    GOOFY_TRASH_MESH,
+    GOOFY_TRASH_BUFFER
+} GOOFY_TRASH;
 
-GLFWwindow* goofy_initWindow(const char* windowName, int width, int height, int major_version, int minor_version); // Use this to create an OpenGL context then create a new window
-GLuint goofy_initShaders(const char* vertexPath,const char* fragmentPath); // Compiles a vertex and fragment shader
-GOOFY_BUFFER goofy_initBuffer(GLuint maxVertices, GLuint maxIndices, size_t maxMeshes); // Returns a GOOFY_BUFFER object
-void goofy_renderMesh(GOOFY_BUFFER* buffer, GOOFY_MESH* mesh, GLuint shaderProgram); // Renders a mesh object
-void goofy_drawAllMeshes(GOOFY_BUFFER* buffer, GLuint shaderProgram); // Draws all meshes in a buffer instance
-void goofy_reallocateMesh(GOOFY_MESH* mesh, size_t newVertexCapacity, size_t newIndexCapacity); // reallocates a mesh's size
-void goofy_printMesh(GOOFY_MESH* mesh); // prints a mesh data (useful for debugging)
-GOOFY_MESH goofy_appendMesh(const GOOFY_MESH* mesh1,const GOOFY_MESH* mesh2); // appends meshes to other meshes (might get deprecated)
-void goofy_deleteBuffer(GOOFY_BUFFER* buffer); // you need to run this at the end or the buffers will memory leak or smth bad
-void goofy_initTextures(int textureWidth, int textureHeight, int numLayers); // initializes global texture array only run this oonce
-void goofy_freeMesh(GOOFY_MESH* mesh); // delete a mesh you need to run this at the end
-void goofy_transformMesh(GOOFY_MESH* mesh,float x,float y,float z); // moves a mesh
-GOOFY_MESH goofy_objMesh(const char* filepath); // loads a mesh from an obj file
-int goofy_loadTexture(const char* path, int layerIndex); // Loads a texture from file
-void goofy_terminate(); // THIS DOES NOT DO CLEANUP FOR STUFF ILL ADD IT LATER
+typedef struct {
+    GOOFY_TRASH type;
+    void* item;
+} GOOFY_TRASH_ITEM;
+
+typedef struct {
+    int maxSize;
+    int trashCount;
+    GOOFY_TRASH_ITEM* items;
+} GOOFY_TRASH_BATCH;
+
+// MAIN MODULE
+GLFWwindow* goofy_initWindow(const char* windowName, short width, short height, char major_version, char minor_version);
+GLuint goofy_initShaders(const char* vertexPath,const char* fragmentPath);
+GOOFY_BUFFER goofy_initBuffer(GLuint maxVertices, GLuint maxIndices, size_t maxMeshes);
+void goofy_renderMesh(GOOFY_BUFFER* buffer, GOOFY_MESH* mesh, GLuint shaderProgram);
+void goofy_drawAllMeshes(GOOFY_BUFFER* buffer, GLuint shaderProgram);
+void goofy_terminate();
+
+// FILE-LOADING functions
+GOOFY_MESH goofy_objMesh(const char* filepath);
+
+// TEXTURE-RELATED functions
+void goofy_initTextures(int textureWidth, int textureHeight, int numLayers);
+int goofy_loadTexture(const char* path, int layerIndex);
+
+// MESH-MODIFICATION functions
+void goofy_transformMesh(GOOFY_MESH* mesh, float x, float y, float z);
+
+// MEMORY-RELATED functions
+void goofy_reallocateMesh(GOOFY_MESH* mesh, size_t newVertexCapacity, size_t newIndexCapacity);
+GOOFY_MESH goofy_appendMesh(const GOOFY_MESH* a,const GOOFY_MESH* b);
+void goofy_freeBuffer(GOOFY_BUFFER* buffer);
+void goofy_freeMesh(GOOFY_MESH* mesh);
+void goofy_initTrashBatch(GOOFY_TRASH_BATCH* batch,int maxSize,char autoClean);
+void goofy_addToTrash(GOOFY_TRASH_BATCH* batch, GOOFY_TRASH type, void* item);
+void goofy_clearTrash(GOOFY_TRASH_BATCH* batch);
+void goofy_freeTrashBatch(GOOFY_TRASH_BATCH* batch);
+GOOFY_MESH goofy_appendMesh(const GOOFY_MESH* a,const GOOFY_MESH* b);
+
+// PRIMITIVE-CREATION functions
+GOOFY_MESH goofy_cubeMesh(float x,float y,float z,unsigned int texture,float width,float height,float length,float r,float g,float b,float tX,float tY);
+
+// MISCELLANEOUS functions
+void goofy_printMesh(GOOFY_MESH* mesh);
 
 #endif

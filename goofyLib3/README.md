@@ -4,6 +4,7 @@ Goofylib3 is basically just a opengl helper, it doesnt really abstract much stuf
 goofylib3 should be MOSTLY backwards compatible i will try
 
 also goofylib3 is based on like 4 other older opengl engines that failed to work
+all functions are in goofyLib3.h
 ---
 
 ## Features

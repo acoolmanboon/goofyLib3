@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - many lights at once or inbuilt lighting (idk if i will really add)
 - more mesh file support
 - primitive shape generation
+- way more functions and better documentation
 - better texture generation
 - more mesh modification functions
 - probably automatic resource cleanup this would be cool
@@ -82,8 +83,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - manual version setting for window creation
 
 ### Changed
-- changed internal code and removed a bunch of comments
-- more useful header file
+- improved internal code and bug fixes
+- added improved comments to header file
 
 ### Deprecated
 - none
@@ -92,6 +93,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - none
 
 ### Fixed
-- forgot that i need to use malloc for structs with variable table sizes, fixed that
+- fixed bug where malloc wasnt used in variable sized table structs causing bug
+
+### Security
+- none
+
+## [Release 1.1.0 "some improvements!"] - 2025-07-08
+
+### Added
+- primitive mesh creation functions
+- added automatic trash collection system
+- goofy_terminate now frees all trash
+- organized functions into sections for easier searching
+
+### Changed
+- changed deleteBuffer function name to freeBuffer
+- changed some int values into short or char to save space
+
+### Deprecated
+- none
+
+### Removed
+- none
+
+### Fixed
+- bug where glwfMakeContextcurrent wasnt set for each window resize causing it to not resize or resize wrong window
+
 ### Security
 - none
