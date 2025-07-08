@@ -1,2 +1,0 @@
-#ifndef GOOFYLIB3UI_H
-#define GOOFYLIB3UI_H
