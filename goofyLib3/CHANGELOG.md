@@ -11,19 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - built in test shaders or fallback one
 - many lights at once or inbuilt lighting (idk if i will really add)
 - more mesh file support
-- primitive shape generation
-- way more functions and better documentation
 - better texture generation
-- more mesh modification functions
-- probably automatic resource cleanup this would be cool
 - actual error handling ( Ihate crashes)
 - MAYBE flexible buffers (like different values)
-- local texture arrays
 
 ### Changed
 - optimize batch rendering with dynamic buffer resizing and less CPU-GPU sync
 - refactor API for even simpler mesh creation and rendering
-- probably let maxMeshes be set by user
 
 ### Fixed
 - improve error handling for shader compilation and resource loading
@@ -31,7 +25,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Deprecated
 - legacy mesh loading functions (to be replaced by new high-level asset loader)
-- probably get rid of appendMesh it was used in old goofyLib for hacky batch rendering
 
 ### Removed
 - none
@@ -121,3 +114,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 - none
+
+## [Release 1.2.0 "Deprecated stuff"] - 2025-07-09
+
+### Added
+- goofy_cubeMesh function added. Returns a cube mesh.
+- comments to .h file
+- Independent texture arrays, summary of all objects is in changed section
+- TextureArrays can now be added to trash collection.
+- added GOOFY_TEXTURE_ARRAY object.
+- added mesh rotation function
+- added mesh texture setting function
+- added sphere creation
+- added mesh resizing
+- simplified primitives creation
+
+### Changed
+- goofy_initTextures now requires an ID argument and returns an independent texture array instance.
+- You now need to pass a texture array to drawAllMeshes.
+- goofy_initTrashBatch nows returns a trashBatch object, i don't know why i didnt do this earlier.
+- window sizes and version parameters changed back to int
+
+### Deprecated
+- none
+
+### Removed
+- shaderProgram argument in goofy_renderMesh function. It does nothing.
+
+### Fixed
+- bug with invalid error handling in trash
+
+### Security
+- none
+

@@ -15,6 +15,7 @@
 #define STB_IMAGE_IMPLEMENTATION
 #define INCREASE 2048
 #define MAX_TRASH 64
+#define PI 3.14159265358979323846
 #include "stb_image.h"
 
 /*
@@ -27,7 +28,7 @@ sizeof(float) = 4
 sizeof(double) = 8
 sizeof(long double) = 16
 */
-GLuint textureArray; // Declare the texture array globally or pass as a parameter
+
 GOOFY_TRASH_BATCH* goofy_trashRegistry[MAX_TRASH];
 short goofy_trashRegistryCount = 0;
 
@@ -82,7 +83,7 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
 
 
 // MAIN MODULE
-GLFWwindow* goofy_initWindow(const char* windowName, short width, short height, char major_version, char minor_version) {
+GLFWwindow* goofy_initWindow(const char* windowName, int width, int height, int major_version, int minor_version) {
     glfwSetErrorCallback(error_callback);
     printf("[GOOFYLIB3] Initializing window %s\n",windowName); 
     if (!glfwInit()) {
@@ -109,7 +110,7 @@ GLFWwindow* goofy_initWindow(const char* windowName, short width, short height, 
     glfwMakeContextCurrent(window);
     if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
         printf("[GOOFYLIB3] Failed to initialize GLAD for window %s\n",windowName);
-        glfwDestroyWindow(window);
+        glfwDestroyWindow(window);  
         glfwTerminate();
         return NULL;  
     } else {
@@ -206,7 +207,7 @@ GOOFY_BUFFER goofy_initBuffer(GLuint maxVertices, GLuint maxIndices, size_t maxM
 
     return buffer;
 }
-void goofy_renderMesh(GOOFY_BUFFER* buffer, GOOFY_MESH* mesh, GLuint shaderProgram) {
+void goofy_renderMesh(GOOFY_BUFFER* buffer, GOOFY_MESH* mesh) {
     if (buffer->meshCount >= buffer->MAX_MESHES) {
         fprintf(stderr, "Exceeded max mesh count!\n");
         return;
@@ -231,15 +232,15 @@ void goofy_renderMesh(GOOFY_BUFFER* buffer, GOOFY_MESH* mesh, GLuint shaderProgr
     buffer->vertexCounts[idx] = mesh->vertexCount;
     buffer->indexCounts[idx] = mesh->indexCount;
 }
-void goofy_drawAllMeshes(GOOFY_BUFFER* buffer, GLuint shaderProgram) {
+void goofy_drawAllMeshes(GOOFY_BUFFER* buffer, GLuint shaderProgram,GOOFY_TEXTURE_ARRAY* textureArray) {
     if (buffer->meshCount == 0) return;
 
     glBindVertexArray(buffer->VAO);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buffer->EBO);
 
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D_ARRAY, textureArray);
-    glUniform1i(glGetUniformLocation(shaderProgram, "textureArray"), 0);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, textureArray->textureArray);
+    glUniform1i(glGetUniformLocation(shaderProgram, "textureArray"),0);
 
     GLsizei* countArray = malloc(sizeof(GLsizei) * buffer->meshCount);
     const void** indexOffsetArray = malloc(sizeof(void*) * buffer->meshCount);
@@ -439,23 +440,35 @@ GOOFY_MESH goofy_objMesh(const char* filepath) {
 }
 
 // TEXTURE-RELATED functions
-void goofy_initTextures(int textureWidth, int textureHeight, int numLayers) {
-    glGenTextures(1, &textureArray);
-    glBindTexture(GL_TEXTURE_2D_ARRAY, textureArray);
-    // default
+GOOFY_TEXTURE_ARRAY goofy_initTextures(int textureWidth, int textureHeight, int numLayers) {
+    GOOFY_TEXTURE_ARRAY generated;
+    generated.currentLayers = 0;
+    generated.numLayers = numLayers;
+
+    glGenTextures(1, &generated.textureArray);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, generated.textureArray);
+
+    // Set texture parameters
     glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameterf(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_LOD_BIAS, -1.4f); // forces lower-res mip levels
 
-    // Allocate the texture array with the same size for all textures (im too lazy to add dynamic layers DONT BE LAZY!)
-    // actually nvm i may add reallocating it
-    glTexStorage3D(GL_TEXTURE_2D_ARRAY, 1, GL_RGBA8, textureWidth, textureHeight, numLayers);
+    int mipLevels = (int)floor(log2((float)fmax(textureWidth, textureHeight))) + 1;
+    glTexStorage3D(GL_TEXTURE_2D_ARRAY, mipLevels, GL_RGBA8, textureWidth, textureHeight, numLayers);
 
     glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
-    printf("[GOOFYLIB3] Successfully initialized texture array!\n");
+    printf("[GOOFYLIB3] Successfully initialized texture array with id %u!\n", generated.textureArray);
+    return generated;
 }
-int goofy_loadTexture(const char* path, int layerIndex) { // taken from goofylib 1
+
+GLuint goofy_loadTexture(const char* path, int layerIndex,GOOFY_TEXTURE_ARRAY* textureArray) { // taken from goofylib 1
+    if (textureArray->currentLayers>=textureArray->numLayers) {
+        printf("[GOOFYLIB3] Not loading texture : %s because texture array is full.\n", path);
+        return -1;
+    }
+    textureArray->currentLayers += 1;
     int width, height, nrChannels;
     stbi_set_flip_vertically_on_load(1);  
     unsigned char *data = stbi_load(path, &width, &height, &nrChannels, 0);
@@ -465,15 +478,14 @@ int goofy_loadTexture(const char* path, int layerIndex) { // taken from goofylib
         return -1; 
     }
     GLenum format = (nrChannels == 3) ? GL_RGB : GL_RGBA;
-    glBindTexture(GL_TEXTURE_2D_ARRAY, textureArray);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, textureArray->textureArray);
     glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, layerIndex, width, height, 1, format, GL_UNSIGNED_BYTE, data);
     glGenerateMipmap(GL_TEXTURE_2D_ARRAY); 
     stbi_image_free(data);
 
     printf("[GOOFYLIB3] Loaded texture: %s into layer %d\n", path, layerIndex);
     glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
-
-    return layerIndex; 
+    return layerIndex;
 }
 
 // MESH-MODIFICATION functions
@@ -484,8 +496,96 @@ void goofy_transformMesh(GOOFY_MESH* mesh, float x, float y, float z) {
         mesh->vertices[i].position[2] += z;
     }
 }
+void goofy_resizeMesh(GOOFY_MESH* mesh, float x, float y, float z) {
+    for (int i = 0; i < mesh->vertexCount; i++) {
+        mesh->vertices[i].position[0] *= x;
+        mesh->vertices[i].position[1] *= y;
+        mesh->vertices[i].position[2] *= z;
+    }
+}
+void goofy_setMeshTexture(GOOFY_MESH* mesh, int texIndex) {
+    for (size_t i = 0; i < mesh->vertexCount; i++) {
+        mesh->vertices[i].texIndex = texIndex;
+    }
+}
+void goofy_setMeshColor(GOOFY_MESH* mesh, float r,float g,float b) {
+    for (size_t i = 0; i < mesh->vertexCount; i++) {
+        mesh->vertices[i].colors[0] = r;
+        mesh->vertices[i].colors[1] = g;
+        mesh->vertices[i].colors[2] = b;
+    }
+}
+void goofy_rotateMesh(GOOFY_MESH* mesh, float angleRad, float axisX, float axisY, float axisZ) {
+    float centerX = 0, centerY = 0, centerZ = 0;
+    for (size_t i = 0; i < mesh->vertexCount; i++) {
+        centerX += mesh->vertices[i].position[0];
+        centerY += mesh->vertices[i].position[1];
+        centerZ += mesh->vertices[i].position[2];
+    }
+    centerX /= mesh->vertexCount;
+    centerY /= mesh->vertexCount;
+    centerZ /= mesh->vertexCount;
 
+    float len = sqrt(axisX*axisX + axisY*axisY + axisZ*axisZ);
+    axisX /= len; axisY /= len; axisZ /= len;
+
+    float c = cos(angleRad);
+    float s = sin(angleRad);
+    float t = 1 - c;
+
+    float rot[3][3] = {
+        {t*axisX*axisX + c,      t*axisX*axisY - s*axisZ, t*axisX*axisZ + s*axisY},
+        {t*axisX*axisY + s*axisZ, t*axisY*axisY + c,      t*axisY*axisZ - s*axisX},
+        {t*axisX*axisZ - s*axisY, t*axisY*axisZ + s*axisX, t*axisZ*axisZ + c}
+    };
+
+    for (size_t i = 0; i < mesh->vertexCount; i++) {
+        float x = mesh->vertices[i].position[0] - centerX;
+        float y = mesh->vertices[i].position[1] - centerY;
+        float z = mesh->vertices[i].position[2] - centerZ;
+
+        float rx = rot[0][0]*x + rot[0][1]*y + rot[0][2]*z;
+        float ry = rot[1][0]*x + rot[1][1]*y + rot[1][2]*z;
+        float rz = rot[2][0]*x + rot[2][1]*y + rot[2][2]*z;
+
+        mesh->vertices[i].position[0] = rx + centerX;
+        mesh->vertices[i].position[1] = ry + centerY;
+        mesh->vertices[i].position[2] = rz + centerZ;
+
+        float* n = mesh->vertices[i].normals;
+        x = n[0]; y = n[1]; z = n[2];
+        n[0] = rot[0][0]*x + rot[0][1]*y + rot[0][2]*z;
+        n[1] = rot[1][0]*x + rot[1][1]*y + rot[1][2]*z;
+        n[2] = rot[2][0]*x + rot[2][1]*y + rot[2][2]*z;
+    }
+}
 // MEMORY-RELATED functions
+GOOFY_MESH* goofy_cloneMesh(const GOOFY_MESH* original) {
+    if (!original) return NULL;
+
+    GOOFY_MESH* clone = (GOOFY_MESH*)malloc(sizeof(GOOFY_MESH));
+    if (!clone) return NULL;
+
+    clone->vertexCount = original->vertexCount;
+    clone->indexCount = original->indexCount;
+
+    clone->vertices = (GOOFY_VERTICE*)malloc(sizeof(GOOFY_VERTICE) * clone->vertexCount);
+    if (!clone->vertices) {
+        free(clone);
+        return NULL;
+    }
+    memcpy(clone->vertices, original->vertices, sizeof(GOOFY_VERTICE) * clone->vertexCount);
+
+    clone->indices = (unsigned int*)malloc(sizeof(unsigned int) * clone->indexCount);
+    if (!clone->indices) {
+        free(clone->vertices);
+        free(clone);
+        return NULL;
+    }
+    memcpy(clone->indices, original->indices, sizeof(unsigned int) * clone->indexCount);
+
+    return clone;
+}
 void goofy_reallocateMesh(GOOFY_MESH* mesh, size_t newVertexCapacity, size_t newIndexCapacity) {
     mesh->vertices = realloc(mesh->vertices, sizeof(GOOFY_VERTICE) * newVertexCapacity);
     mesh->indices = realloc(mesh->indices, sizeof(unsigned int) * newIndexCapacity);
@@ -544,18 +644,27 @@ void goofy_freeMesh(GOOFY_MESH* mesh) {
     mesh->vertexCount = 0;
     mesh->indexCount = 0;
 }
-void goofy_initTrashBatch(GOOFY_TRASH_BATCH* batch,int maxSize,char autoClean) {
-    batch->maxSize = maxSize;
-    batch->trashCount = 0;
-    batch->items = malloc(sizeof(GOOFY_TRASH_ITEM) * batch->maxSize);
+void goofy_freeTextureArray(GOOFY_TEXTURE_ARRAY* textureArray) {
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glDeleteTextures(1, &textureArray->textureArray);
+    textureArray->currentLayers = 0;
+    textureArray->numLayers = 0;
+    textureArray->textureArray = 0;
+}
+GOOFY_TRASH_BATCH goofy_initTrashBatch(int maxSize,char autoClean) {
+    GOOFY_TRASH_BATCH batch;
+    batch.maxSize = maxSize;
+    batch.trashCount = 0;
+    batch.items = malloc(sizeof(GOOFY_TRASH_ITEM) * batch.maxSize);
     if (autoClean == 1) {
         if (MAX_TRASH>goofy_trashRegistryCount) {
-            goofy_trashRegistry[goofy_trashRegistryCount++] = batch;
+            goofy_trashRegistry[goofy_trashRegistryCount++] = &batch;
         } else {
-            printf("[GOOFYLIB3] Max trash batches reached (%d). Cannot track more batches.\n", MAX_TRASH);
-            return;
+            printf("[GOOFYLIB3] Max trash batches reached (%d). Cannot track more batches. (your code still work it just wont automatically clean)\n", MAX_TRASH);
+            return batch;
         }
     }
+    return batch;
 }
 void goofy_addToTrash(GOOFY_TRASH_BATCH* batch, GOOFY_TRASH type, void* item) {
     if (batch->trashCount >= batch->maxSize) {
@@ -565,6 +674,7 @@ void goofy_addToTrash(GOOFY_TRASH_BATCH* batch, GOOFY_TRASH type, void* item) {
     }
 
     batch->items[batch->trashCount++] = (GOOFY_TRASH_ITEM){type, item};
+    //printf("ambatukam %d \n",batch->trashCount);
 }
 void goofy_clearTrash(GOOFY_TRASH_BATCH* batch) {
      for (int i = 0; i < batch->trashCount; i++) {
@@ -576,8 +686,11 @@ void goofy_clearTrash(GOOFY_TRASH_BATCH* batch) {
             case GOOFY_TRASH_BUFFER:
                 goofy_freeBuffer((GOOFY_BUFFER*)item->item);
                 break;
+            case GOOFY_TRASH_TEXTURE_ARRAY:
+                goofy_freeTextureArray((GOOFY_TEXTURE_ARRAY*)item->item);
+                break;
             default:
-                printf("[GOOFYLIB3] Unknown trash item being cleared in trash batch. Type : %d.\n",item->type); 
+                printf("[GOOFYLIB3] Unknown trash item being cleared in trash batch. Index %d Type : %d.\n",i,item->type); 
                 break;
         }
     }
@@ -591,44 +704,44 @@ void goofy_freeTrashBatch(GOOFY_TRASH_BATCH* batch) {
 }
 
 // PRIMITIVE-CREATION functions
-GOOFY_MESH goofy_cubeMesh(float x,float y,float z,unsigned int texture,float width,float height,float length,float r,float g,float b,float tX,float tY)  {
+GOOFY_MESH goofy_cubeMesh(float x,float y,float z,float width,float height,float length,float tX,float tY)  {
     GOOFY_MESH mesh;
     GOOFY_VERTICE cubeVertices[] = {
         // Front face (Z = -size)
-        {{x+width, y+height, z+length}, {r,g,b}, {0,0,1}, {0.0f, tY}, texture,1},
-        {{x-width, y+height, z+length}, {r,g,b}, {0,0,1}, {tX, tY}, texture,1},
-        {{x-width, y-height, z+length}, {r,g,b}, {0,0,1}, {tX, 0.0f}, texture,1},
-        {{x+width, y-height, z+length}, {r,g,b}, {0,0,1}, {0.0f, 0.0f}, texture,1},
+        {{x+width, y+height, z+length}, {1.0f,1.0f,1.0f}, {0,0,1}, {0.0f, tY}, 0,1},
+        {{x-width, y+height, z+length}, {1.0f,1.0f,1.0f}, {0,0,1}, {tX, tY}, 0,1},
+        {{x-width, y-height, z+length}, {1.0f,1.0f,1.0f}, {0,0,1}, {tX, 0.0f}, 0,1},
+        {{x+width, y-height, z+length}, {1.0f,1.0f,1.0f}, {0,0,1}, {0.0f, 0.0f}, 0,1},
     
         // Back face (Z = +size)
-        {{x-width, y+height, z-length}, {r,g,b}, {0,0,-1},  {0.0f, tY}, texture,1},
-        {{x+width, y+height, z-length}, {r,g,b}, {0,0,-1},  {tX, tY}, texture,1},
-        {{x+width, y-height, z-length}, {r,g,b}, {0,0,-1},  {tX, 0.0f}, texture,1},
-        {{x-width, y-height, z-length}, {r,g,b}, {0,0,-1},  {0.0f, 0.0f}, texture,1},
+        {{x-width, y+height, z-length}, {1.0f,1.0f,1.0f}, {0,0,-1},  {0.0f, tY}, 0,1},
+        {{x+width, y+height, z-length}, {1.0f,1.0f,1.0f}, {0,0,-1},  {tX, tY}, 0,1},
+        {{x+width, y-height, z-length}, {1.0f,1.0f,1.0f}, {0,0,-1},  {tX, 0.0f}, 0,1},
+        {{x-width, y-height, z-length}, {1.0f,1.0f,1.0f}, {0,0,-1},  {0.0f, 0.0f}, 0,1},
     
         // Left face (X = -size)
-        {{x+width, y+height, z-length}, {r,g,b}, {1,0,0}, {0.0f, tY}, texture,1},
-        {{x+width, y+height, z+length}, {r,g,b}, {1,0,0}, {tX, tY}, texture,1},
-        {{x+width, y-height, z+length}, {r,g,b}, {1,0,0}, {tX, 0.0f}, texture,1},
-        {{x+width, y-height, z-length}, {r,g,b}, {1,0,0}, {0.0f, 0.0f}, texture,1},
+        {{x+width, y+height, z-length}, {1.0f,1.0f,1.0f}, {1,0,0}, {0.0f, tY}, 0,1},
+        {{x+width, y+height, z+length}, {1.0f,1.0f,1.0f}, {1,0,0}, {tX, tY}, 0,1},
+        {{x+width, y-height, z+length}, {1.0f,1.0f,1.0f}, {1,0,0}, {tX, 0.0f}, 0,1},
+        {{x+width, y-height, z-length}, {1.0f,1.0f,1.0f}, {1,0,0}, {0.0f, 0.0f}, 0,1},
     
         // Right face (X = +size)
-        {{x-width, y+height, z+length}, {r,g,b}, {-1,0,0},  {0.0f, tY}, texture,1},
-        {{x-width, y+height, z-length}, {r,g,b}, {-1,0,0},  {tX, tY}, texture,1},
-        {{x-width, y-height, z-length}, {r,g,b}, {-1,0,0},  {tX, 0.0f}, texture,1},
-        {{x-width, y-height, z+length}, {r,g,b}, {-1,0,0},  {0.0f, 0.0f}, texture,1},
+        {{x-width, y+height, z+length}, {1.0f,1.0f,1.0f}, {-1,0,0},  {0.0f, tY}, 0,1},
+        {{x-width, y+height, z-length}, {1.0f,1.0f,1.0f}, {-1,0,0},  {tX, tY}, 0,1},
+        {{x-width, y-height, z-length}, {1.0f,1.0f,1.0f}, {-1,0,0},  {tX, 0.0f}, 0,1},
+        {{x-width, y-height, z+length}, {1.0f,1.0f,1.0f}, {-1,0,0},  {0.0f, 0.0f}, 0,1},
     
         // Top face (Y = +size)
-        {{x+width, y-height, z+length}, {r,g,b}, {0,-1,0},  {0.0f, tY}, texture,1},
-        {{x-width, y-height, z+length}, {r,g,b}, {0,-1,0},  {tX, tY}, texture,1},
-        {{x-width, y-height, z-length}, {r,g,b}, {0,-1,0},  {tX, 0.0f}, texture,1},
-        {{x+width, y-height, z-length}, {r,g,b}, {0,-1,0},  {0.0f, 0.0f}, texture,1},
+        {{x+width, y-height, z+length}, {1.0f,1.0f,1.0f}, {0,-1,0},  {0.0f, tY}, 0,1},
+        {{x-width, y-height, z+length}, {1.0f,1.0f,1.0f}, {0,-1,0},  {tX, tY}, 0,1},
+        {{x-width, y-height, z-length}, {1.0f,1.0f,1.0f}, {0,-1,0},  {tX, 0.0f}, 0,1},
+        {{x+width, y-height, z-length}, {1.0f,1.0f,1.0f}, {0,-1,0},  {0.0f, 0.0f}, 0,1},
     
         // Bottom face (Y = -size)
-        {{x+width, y+height, z-length}, {r,g,b}, {0,1,0}, {0.0f, tY}, texture,1},
-        {{x-width, y+height, z-length}, {r,g,b}, {0,1,0}, {tX, tY}, texture,1},
-        {{x-width, y+height, z+length}, {r,g,b}, {0,1,0}, {tX, 0.0f}, texture,1},
-        {{x+width, y+height, z+length}, {r,g,b}, {0,1,0}, {0.0f, 0.0f}, texture,1},
+        {{x+width, y+height, z-length}, {1.0f,1.0f,1.0f}, {0,1,0}, {0.0f, tY}, 0,1},
+        {{x-width, y+height, z-length}, {1.0f,1.0f,1.0f}, {0,1,0}, {tX, tY}, 0,1},
+        {{x-width, y+height, z+length}, {1.0f,1.0f,1.0f}, {0,1,0}, {tX, 0.0f}, 0,1},
+        {{x+width, y+height, z+length}, {1.0f,1.0f,1.0f}, {0,1,0}, {0.0f, 0.0f}, 0,1},
     };
     
     unsigned int cubeIndices[] = {
@@ -657,7 +770,95 @@ GOOFY_MESH goofy_cubeMesh(float x,float y,float z,unsigned int texture,float wid
     memcpy(mesh.indices, cubeIndices, sizeof(cubeIndices));
     return mesh;
 }
+GOOFY_MESH* goofy_createSphere(float radius, unsigned int sectorCount, unsigned int stackCount) {
+    GOOFY_MESH* sphere = (GOOFY_MESH*)malloc(sizeof(GOOFY_MESH));
+    if (!sphere) return NULL;
 
+    sphere->vertexCount = (stackCount + 1) * (sectorCount + 1);
+    sphere->indexCount = stackCount * sectorCount * 6;
+
+    sphere->vertices = (GOOFY_VERTICE*)malloc(sizeof(GOOFY_VERTICE) * sphere->vertexCount);
+    sphere->indices = (unsigned int*)malloc(sizeof(unsigned int) * sphere->indexCount);
+
+    if (!sphere->vertices || !sphere->indices) {
+        free(sphere->vertices);
+        free(sphere->indices);
+        free(sphere);
+        return NULL;
+    }
+
+    float x, y, z, xy;                             
+    float nx, ny, nz, lengthInv = 1.0f / radius;   
+    float s, t;                                  
+
+    float sectorStep = 2 * PI / sectorCount;
+    float stackStep = PI / stackCount;
+    float sectorAngle, stackAngle;
+
+    size_t v = 0;
+    for (unsigned int i = 0; i <= stackCount; ++i) {
+        stackAngle = PI / 2 - i * stackStep;        
+        xy = radius * cosf(stackAngle);             
+        y = radius * sinf(stackAngle);              
+
+        for (unsigned int j = 0; j <= sectorCount; ++j) {
+            sectorAngle = j * sectorStep;         
+
+            // Vertex position
+            x = xy * cosf(sectorAngle);
+            z = xy * sinf(sectorAngle);
+            sphere->vertices[v].position[0] = x;
+            sphere->vertices[v].position[1] = y;
+            sphere->vertices[v].position[2] = z;
+
+
+            nx = x * lengthInv;
+            ny = y * lengthInv;
+            nz = z * lengthInv;
+            sphere->vertices[v].normals[0] = nx;
+            sphere->vertices[v].normals[1] = ny;
+            sphere->vertices[v].normals[2] = nz;
+
+            // Colors (white)
+            sphere->vertices[v].colors[0] = 1.0f;
+            sphere->vertices[v].colors[1] = 1.0f;
+            sphere->vertices[v].colors[2] = 1.0f;
+
+            // Texture coordinates
+            s = (float)j / sectorCount;
+            t = (float)i / stackCount;
+            sphere->vertices[v].texCoords[0] = s;
+            sphere->vertices[v].texCoords[1] = t;
+
+            // Texture index and is3d
+            sphere->vertices[v].texIndex = 0;
+            sphere->vertices[v].is3d = 1;
+
+            ++v;
+        }
+    }
+    size_t idx = 0;
+    for (unsigned int i = 0; i < stackCount; ++i) {
+        unsigned int k1 = i * (sectorCount + 1);     
+        unsigned int k2 = k1 + sectorCount + 1;     
+
+        for (unsigned int j = 0; j < sectorCount; ++j, ++k1, ++k2) {
+            if (i != 0) {
+                sphere->indices[idx++] = k1;
+                sphere->indices[idx++] = k2;
+                sphere->indices[idx++] = k1 + 1;
+            }
+
+            if (i != (stackCount - 1)) {
+                sphere->indices[idx++] = k1 + 1;
+                sphere->indices[idx++] = k2;
+                sphere->indices[idx++] = k2 + 1;
+            }
+        }
+    }
+
+    return sphere;
+}
 // MISCELLANEOUS functions
 void goofy_printMesh(GOOFY_MESH* mesh) {
     if (!mesh) {
