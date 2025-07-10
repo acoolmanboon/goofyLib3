@@ -360,7 +360,14 @@ GOOFY_MESH goofy_objMesh(const char* filepath) {
 
     if (!result.vertices || !result.indices) {
         fprintf(stderr, "[GOOFYLIB3] Memory allocation failed\n");
-        free(x); free(y); free(z); free(vtx); free(vty); free(nx); free(ny); free(nz);
+
+        if (result.vertices) free(result.vertices);
+        if (result.indices)  free(result.indices);
+
+        free(x); free(y); free(z);
+        free(vtx); free(vty);
+        free(nx); free(ny); free(nz);
+
         fclose(file);
         return result;
     }
