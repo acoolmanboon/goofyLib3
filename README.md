@@ -1,4 +1,4 @@
-# GoofyLib3 - Simple OpenGL Helper Library
+# GoofyLib3 - Simple OpenGL Helper Library (ITS IN C)
 
 Goofylib3 is basically just a opengl helper, it doesnt really abstract much stuff but it lets people not experience the actual pain of making their own opengl engine
 goofylib3 should be MOSTLY backwards compatible i will try
